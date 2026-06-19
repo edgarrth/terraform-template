@@ -1,76 +1,64 @@
-# Terraform AWS Microservices Landing Zone
+# AWS Microservices Landing Zone - Terraform + Terragrunt
 
-Ejemplo de landing zone para microservicios Java en AWS usando servicios administrados:
+Repositorio de ejemplo para crear una landing zone / golden path de microservicios Java en AWS usando Terraform para los módulos y Terragrunt para la composición por ambiente.
 
-- Amazon EKS para Kubernetes.
-- Amazon RDS PostgreSQL.
-- Amazon DocumentDB para compatibilidad MongoDB.
-- Amazon ElastiCache Redis.
-- Amazon MSK Kafka.
-- Amazon ECR.
-- AWS KMS, IAM, Secrets Manager, CloudWatch y WAF.
+## Qué contiene
 
-## Estructura
-
-```text
-terraform/
-├── modules/                  # Módulos reutilizables
-├── live/dev/                  # Composición ambiente dev
-├── live/qa/                   # Composición ambiente qa
-├── live/prod/                 # Composición ambiente prod
-├── backend/                   # Backend S3 por ambiente
-└── globals/                   # Variables globales de referencia
-```
+- `modules/`: módulos Terraform reutilizables para networking, EKS, RDS PostgreSQL, DocumentDB, Redis, MSK Kafka, ECR, IAM, KMS, observabilidad, Secrets Manager y WAF.
+- `live/`: despliegues reales por ambiente (`dev`, `qa`, `prod`) usando Terragrunt.
+- `live/terragrunt.hcl`: configuración común heredada: backend S3, lock DynamoDB, provider AWS y tags comunes.
+- `live/<env>/env.hcl`: parámetros específicos del ambiente.
+- `live/<env>/<component>/terragrunt.hcl`: dependencias e inputs del componente.
 
 ## Orden de despliegue
 
-Por ambiente:
+Terragrunt puede resolver dependencias con `dependency`:
 
-```bash
-cd live/dev/foundation
-terraform init -backend-config=../../../backend/dev.hcl -backend-config="key=dev/foundation/terraform.tfstate"
-terraform apply
-
-cd ../network
-terraform init -backend-config=../../../backend/dev.hcl -backend-config="key=dev/network/terraform.tfstate"
-terraform apply
-
-cd ../platform
-terraform init -backend-config=../../../backend/dev.hcl -backend-config="key=dev/platform/terraform.tfstate"
-terraform apply
-
-cd ../data
-terraform init -backend-config=../../../backend/dev.hcl -backend-config="key=dev/data/terraform.tfstate"
-terraform apply
-
-cd ../observability
-terraform init -backend-config=../../../backend/dev.hcl -backend-config="key=dev/observability/terraform.tfstate"
-terraform apply
+```text
+foundation -> network -> platform -> observability
+foundation -> network -> data
 ```
 
-Repetir para `qa` y `prod`, cambiando el backend y la carpeta.
+Ejemplo:
 
-## Antes de aplicar
+```bash
+cd terraform/live/dev
+terragrunt run-all plan
+terragrunt run-all apply
+```
 
-1. Crear manualmente o con bootstrap los buckets S3 y tablas DynamoDB para el remote state.
-2. Cambiar los IDs de cuenta en `globals/accounts.tfvars`.
-3. Cambiar nombres de buckets en `backend/*.hcl`.
-4. Ajustar CIDRs, tamaños de instancia y región.
-5. Revisar costos: MSK, DocumentDB, NAT Gateway y EKS generan costo aunque no haya tráfico.
+O por componente:
 
-# Recomendacion landing zone
+```bash
+cd terraform/live/dev/foundation
+terragrunt apply
 
-Para producción se recomienda agregar:
+cd ../network
+terragrunt apply
 
-- SCPs con AWS Organizations.
-- AWS Control Tower Account Factory.
-- GuardDuty y Security Hub organizacional.
-- IRSA/EKS Pod Identity por microservicio.
-- AWS Load Balancer Controller vía Helm/GitOps.
-- External Secrets Operator.
-- Karpenter.
-- Network Policies.
-- Backups centralizados con AWS Backup.
+cd ../platform
+terragrunt apply
+
+cd ../data
+terragrunt apply
+
+cd ../observability
+terragrunt apply
+```
+
+## Cambios con terragrunt
+
+Terragrunt se usa donde aporta más valor: en `live/`, para evitar repetir backend/provider/tags, centralizar variables por ambiente y pasar outputs entre capas mediante `dependency`.
+
+Los módulos siguen siendo Terraform puro para poder reutilizarlos desde cualquier pipeline o incluso sin Terragrunt.
+
+## Antes de ejecutar
+
+1. Crea el bucket S3 de state por ambiente o ajusta `state_bucket` en cada `env.hcl`.
+2. Crea la tabla DynamoDB `terraform-locks` o ajusta `lock_table`.
+3. Cambia los `account_id` placeholder.
+4. Revisa tamaños y parámetros productivos antes de aplicar en AWS real.
+
 
 - 
 ## Landing Zone
